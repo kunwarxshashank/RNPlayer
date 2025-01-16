@@ -1,25 +1,59 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, StatusBar, BackHandler } from 'react-native';
-import Video from 'react-native-video';
-import { MaterialIcons } from '@expo/vector-icons';
+import React, { useState, useRef, useEffect, useContext } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar, BackHandler, Modal, } from 'react-native';
+import Video, { DRMType } from 'react-native-video';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import Slider from '@react-native-community/slider';
+import PlayerModal from 'app/components/PlayerModal';
+import { SettingsContext } from '../ContextApi/SettingsContext';  //using context
 
 const Player = ({ route }) => {
+
   const videoRef = useRef(null);
   const [volume, setVolume] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isMute, setIsMute] = useState(enableAudio);
+  const [resizeMode, setresizeMode] = useState("cover");
   const [isBuffering, setIsBuffering] = useState(false);
   const [videoPressed, setVideoPressed] = useState(false);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
+  const [selectedAudioTrack, setselectedAudioTrack] = useState(0);
+  const [selectedVideoTrack, setselectedVideoTrack] = useState(0);
+  const [selectedTextTrack, setselectedTextTrack] = useState(0);
+  const [AllAudioTracks, setAllAudioTracks] = useState([]);
+  const [AllVideoTracks, setAllVideoTracks] = useState([]);
+  const [AllTextTracks, setAllTextTracks] = useState([]);
+  const [AudioModalVisible, setAudioModalVisible] = useState(false);
+  const [bgplay, setbgplay] = useState(false);
 
-  // taking parameters from other pages
-  const { url, referer, origin, cookie, userAgent, drmKey, drmType } = route.params;
-  
+
+  const { 
+    url,
+    referer,
+    origin,
+    cookie,
+    userAgent,
+    drmKey,
+    drmType } = route.params; //params query optional
+
+
+  const {
+    enableAutoPlay,
+    enableAudio,
+    enablePip,
+    enablelandscape,
+    addonsdefault,
+    cinemadefault,
+  } = useContext(SettingsContext);
 
   useEffect(() => {
+    console.log(drmType);
+    console.log("Is audio: ",enableAudio);
+    
+
+    // console.log("Audio Tracks", AllAudioTracks);
     NavigationBar.setVisibilityAsync("hidden"); // Hide bottom nav bar
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
 
@@ -33,7 +67,8 @@ const Player = ({ route }) => {
     return () => BackHandler.removeEventListener('hardwareBackPress', backAction);
   }, []);
 
-  const handlePlayPause = () => {
+
+  const handlePlayPause = () => { // Play/Pause btn
     setIsPlaying(!isPlaying);
   };
 
@@ -43,7 +78,7 @@ const Player = ({ route }) => {
     setPosition(newPosition);
   };
 
-  const formatDuration = (millis) => {
+  const formatDuration = (millis) => { //Timestamp video
     const hours = Math.floor(millis / 3600000);
     const minutes = Math.floor((millis % 3600000) / 60000);
     const seconds = ((millis % 60000) / 1000).toFixed(0);
@@ -54,17 +89,65 @@ const Player = ({ route }) => {
     setPosition(data.currentTime * 1000); // Convert seconds to milliseconds
   };
 
-  const onBuffer = ({ isBuffering }) => {
-    setIsBuffering(isBuffering); // handle Buffering
+  const onBuffer = ({ isBuffering }) => { //Buffers
+    setIsBuffering(isBuffering);
   };
 
   const onLoad = (data) => {
     setDuration(data.duration * 1000); // Convert seconds to milliseconds
   };
 
+  const handleMute = () => {
+    setIsMute(false);
+  }
+
+  const handleUnmute = () => {
+    setIsMute(true);
+  }
+  const handleZoomIn = () => {
+    setresizeMode("cover");
+  }
+  const handleZoomOut = () => {
+    setresizeMode("none");
+  }
+
+  const handleModal = () => {
+    handlePlayPause();
+    setAudioModalVisible(true);
+  }
+
+  const handlebgplay = () => {
+    setbgplay(true);
+  }
+
+  const applyPlayerChanges = () => {
+    handlePlayPause();
+    setAudioModalVisible(false);
+  }
+
+  const cancelPlayerChanges = () => {
+    handlePlayPause();
+    setAudioModalVisible(false);
+  }
+
+
   return (
     <View style={styles.container}>
       <StatusBar hidden />
+      <PlayerModal
+        visible={AudioModalVisible}
+        audioTracks={AllAudioTracks}
+        videoTracks={AllVideoTracks}
+        textTracks={AllTextTracks}
+        selectedAudioTrack={selectedAudioTrack}
+        selectedVideoTrack={selectedVideoTrack}
+        selectedTextTrack={selectedTextTrack}
+        onSelectAudio={(index) => setselectedAudioTrack(index)}
+        onSelectVideo={(index) => setselectedVideoTrack(index)}
+        onSelectText={(index) => setselectedTextTrack(index)}
+        onApply={applyPlayerChanges}
+        onCancel={cancelPlayerChanges}
+      />
       <TouchableOpacity style={styles.playerarea}>
 
         <Video
@@ -77,14 +160,54 @@ const Player = ({ route }) => {
               Cookie: cookie,
               'User-Agent': userAgent,
             },
-          }}
+          }}  
+          
+          {...(drmType && {
+            drm: {
+              type: drmType,
+              licenseServer: drmKey,
+            },
+          })}
+
           style={styles.video}
-          resizeMode="cover"
+          muted={isMute}
+          playInBackground={bgplay}
+          resizeMode={resizeMode}
           paused={!isPlaying}
           volume={volume}
           onProgress={onProgress}
           onBuffer={onBuffer}
-          onLoad={onLoad}
+          // onLoad={onLoad}
+          onLoad={(videoInfo) => {
+            console.log("Video info: ", videoInfo)
+            setAllAudioTracks(videoInfo.audioTracks);
+            setAllVideoTracks(videoInfo.videoTracks);
+            setAllTextTracks(videoInfo.textTracks);
+
+          }}
+
+          selectedAudioTrack={{
+            type: "index",
+            value: selectedAudioTrack
+          }}
+
+          selectedVideoTrack={{
+            type: "resolution",
+            value: selectedVideoTrack
+          }}
+
+          selectedTextTrack={{
+            type: "index",
+            value: selectedTextTrack // Replace 0 with the actual index of the subtitle track
+          }}
+
+          textStyle={{
+            color: "red", // Subtitle text color
+            fontSize: 20, // Subtitle font size
+            fontFamily: "Arial", // Custom font family
+            backgroundColor: "rgba(0, 0, 0, 0.5)", // Subtitle background color
+          }}
+
           onError={(error) => console.error('Video Error:', error)}
         />
 
@@ -92,7 +215,7 @@ const Player = ({ route }) => {
           onPress={() => setVideoPressed(!videoPressed)}
           style={[styles.controlsarea, { backgroundColor: videoPressed ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0)' }]}>
 
-          {isBuffering ? ( // On Buffering shows buffering text you can add custom animation/lottie
+          {isBuffering ? (
             <View style={styles.bufferingContainer}>
               <Text style={{ color: 'white' }}>Buffering...</Text>
             </View>
@@ -104,7 +227,7 @@ const Player = ({ route }) => {
 
               <TouchableOpacity onPress={handlePlayPause}>
                 <MaterialIcons
-                  name={isPlaying ? 'pause' : 'play-arrow'}
+                  name={isPlaying ? 'pause-circle-filled' : 'play-circle-filled'}
                   size={50}
                   color="white"
                 />
@@ -129,6 +252,61 @@ const Player = ({ route }) => {
             />
             <Text style={styles.slidertext}>{formatDuration(duration)}</Text>
           </View>
+
+
+          {!isBuffering && (
+            <View style={[styles.footercontrols, { opacity: videoPressed ? 1 : 0 }]}>
+
+              {
+                isMute ? (
+                  <TouchableOpacity onPress={handleMute}>
+                    <MaterialIcons name="volume-off" color="white" size={30} />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={handleUnmute}>
+                    <MaterialIcons name="volume-up" color="white" size={30} />
+                  </TouchableOpacity>
+                )
+
+              }
+
+
+              <TouchableOpacity onPress={handleModal}>
+                <MaterialIcons name="video-settings" color="white" size={30} />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handleModal}>
+                <MaterialIcons name="speed" color="white" size={30} />
+              </TouchableOpacity>
+
+              {bgplay ? (
+                <TouchableOpacity onPress={() => setbgplay(false)}>
+                  <MaterialCommunityIcons name="headphones-off" color="white" size={30} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => setbgplay(true)}>
+                  <MaterialCommunityIcons name="headphones" color="white" size={30} />
+                </TouchableOpacity>
+              )}
+
+
+              {
+                resizeMode === "cover" ? (
+                  <TouchableOpacity onPress={handleZoomOut}>
+                    <MaterialIcons name="zoom-out-map" color="white" size={30} />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={handleZoomIn}>
+                    <MaterialIcons name="zoom-in-map" color="white" size={30} />
+                  </TouchableOpacity>
+                )
+              }
+
+
+
+            </View>
+          )}
+
         </TouchableOpacity>
       </TouchableOpacity>
     </View>
@@ -174,7 +352,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     width: '85%',
     position: 'absolute',
-    bottom: 20,
+    bottom: 80,
   },
   sliderbar: {
     flex: 1,
@@ -182,6 +360,13 @@ const styles = StyleSheet.create({
   slidertext: {
     color: 'white',
   },
+  footercontrols: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    position: 'absolute',
+    width: "70%",
+    bottom: 25,
+  }
 });
 
 export default Player;
